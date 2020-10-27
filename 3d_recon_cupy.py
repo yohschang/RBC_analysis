@@ -657,6 +657,8 @@ dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3Dx,-k2), 1)), n_med)
 dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = cupy.real(n_med)+cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
 dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
 
+tv = TvMin(lamb = 0.02)
+
 
 for iter in tqdm(range(0,100)): 
     
@@ -669,6 +671,9 @@ for iter in tqdm(range(0,100)):
 #     Positive constraint
     dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = cupy.real(n_med)+cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
     dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
+    tv.setInputImage(dn_3D)
+    tv.minimize()
+    dn_3D = tv.getResultImage()
     
 
 dF_3D = cupy.multiply(cupy.subtract(cupy.divide(cupy.multiply(dn_3D,dn_3D),n_med2),1),-k2)
@@ -683,11 +688,9 @@ dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = n_med+1j*cupy.imag(dn_3D[cupy.less(cu
 
 
 n_3D = cupy.asnumpy(cupy.transpose(dn_3D,(0,2,1)))
+# n_3D_tv = cupy.asnumpy(cupy.transpose(dn_3D_tv,(0,2,1)))
 
-tv = TvMin()
-tv.setInputImage(n_3D)
-tv.minimize()
-n_3D_tv = tv.getResultImage()
+
 
 dn_3D = None
 dF_3D = None
@@ -703,12 +706,12 @@ ax3=axes[2]
 # xy = (center_crop(np.real(n_3D[:,:,ffsize//2]),128,128))
 # xz = np.transpose(center_crop(np.real(n_3D[:,ffsize//2,:]),128,128))
 # yz = np.transpose(center_crop(np.real(n_3D[ffsize//2,:,:]),128,128))
-xy = np.real(n_3D_tv[:,:,ffsize//2])
-xz = np.real(n_3D_tv[:,ffsize//2,:])
-yz = np.real(n_3D_tv[ffsize//2,:,:])
-# xy = np.real(np.sum(n_3D,axis = 2))
-# xz = np.real(np.sum(n_3D,axis = 1))
-# yz = np.real(np.sum(n_3D,axis = 0))
+# xy = np.real(n_3D[:,:,ffsize//2])
+# xz = np.real(n_3D[:,ffsize//2,:])
+# yz = np.real(n_3D[ffsize//2,:,:])
+xy = np.real(np.sum(n_3D,axis = 2))
+xz = np.real(np.sum(n_3D,axis = 1))
+yz = np.real(np.sum(n_3D,axis = 0))
 Vmin = 1.35
 Vmax = np.max(np.real(n_3D))
 im1 = ax1.imshow(xy, cmap=plt.cm.jet)
