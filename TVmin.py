@@ -17,7 +17,7 @@ import cupy
 
 class TvMin(object):
     
-    def __init__(self , to =0.15 , lamb = 0.09 , iter = 100 , verbose = False):
+    def __init__(self , to =0.15 , lamb = 0.015 , iter = 10 , verbose = False):
         self.to = to
         self.lamb = lamb
         self.iterationNumber = iter
@@ -51,7 +51,7 @@ class TvMin(object):
             p = (p + self.to*psi)/(1 + self.to*r)
             self.resultImage = (self.inputImage - self.divergence(p)*self.lamb)
             # print(self.resultImage)
-            print(self.norm2_3d(self.resultImage - p_prev))
+            # print(self.norm2_3d(self.resultImage - p_prev))
         
     
     def norm2_3d(self,x):
