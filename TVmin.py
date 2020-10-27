@@ -2,7 +2,7 @@
 """
 Created on Mon Oct 26 17:26:25 2020
 
-@author: YX
+reference : https://github.com/gokhangg
 """
 
 import SimpleITK as sitk
