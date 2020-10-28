@@ -48,7 +48,7 @@ for i in range(db["rbc_array"].size):
     # recrop_phi = phimap[cv2_center[1]-crop_sz//2:cv2_center[1]+crop_sz//2,cv2_center[0]-crop_sz//2:cv2_center[0]+crop_sz//2]
     phi_stack.append(recrop_phi)
     # plt.imshow(phase_img[crop_y[0]:crop_y[1],crop_x[0]:crop_x[1]],vmin = 0,vmax = 10)
-    plt.imshow(recrop_phi.real,cmap = "jet" )
-    plt.title(str(i))
-    plt.show()
+    # plt.imshow(recrop_phi.real,cmap = "jet" )
+    # plt.title(str(i))
+    # plt.show()
     np.save(r"D:\data\2020-10-17\rbc2\phi\rbc1\re_crop",phi_stack)

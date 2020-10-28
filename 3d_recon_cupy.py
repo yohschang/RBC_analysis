@@ -17,6 +17,7 @@ from scipy import ndimage
 import cupy
 import cupyx.scipy.ndimage
 # from cupyx.scipy import ndimage
+import skimage
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -657,24 +658,20 @@ dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3Dx,-k2), 1)), n_med)
 dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = cupy.real(n_med)+cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
 dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
 
-tv = TvMin(lamb = 0.02)
+n_3D_bi = np.zeros(dn_3D.shape,dtype=int)
+
+# for iter in tqdm(range(0,100)): 
+    
+#     dF_3D = cupy.multiply(cupy.subtract(cupy.divide(cupy.multiply(dn_3D,dn_3D),n_med2),1),-k2)
+#     dF_3D = cupy.fft.fftn(dF_3D)
+#     dF_3D[cupy.not_equal(dF_3D_2,0)] = dF_3D_2[cupy.not_equal(dF_3D_2,0)]
+#     dF_3D   = cupy.fft.ifftn(dF_3D)    
+#     dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3D,-k2), 1)), n_med)
+#     #Positive constraint
+#     dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = cupy.real(n_med)+cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
+#     dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
 
 
-for iter in tqdm(range(0,100)): 
-    
-    dF_3D = cupy.multiply(cupy.subtract(cupy.divide(cupy.multiply(dn_3D,dn_3D),n_med2),1),-k2)
-    dF_3D = cupy.fft.fftn(dF_3D)
-    dF_3D[cupy.not_equal(dF_3D_2,0)] = dF_3D_2[cupy.not_equal(dF_3D_2,0)]
-    dF_3D   = cupy.fft.ifftn(dF_3D)    
-    dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3D,-k2), 1)), n_med)
-    
-#     Positive constraint
-    dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = cupy.real(n_med)+cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
-    dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
-    tv.setInputImage(dn_3D)
-    tv.minimize()
-    dn_3D = tv.getResultImage()
-    
 
 dF_3D = cupy.multiply(cupy.subtract(cupy.divide(cupy.multiply(dn_3D,dn_3D),n_med2),1),-k2)
 dF_3D = cupy.fft.fftn(dF_3D)
@@ -684,6 +681,20 @@ dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3D,-k2), 1)), n_med)
 
 dn_3D =  cupy.fft.fftshift(dn_3D);
 dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = n_med+1j*cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
+dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
+
+
+##TVMIN + positiveconstrain + crop
+tv = TvMin(dF_3D_2 = dF_3D_2 , lamb = 0.006, iteration = 100)
+tv.setInputImage(dn_3D)
+tv.minimize()
+dn_3D = tv.getResultImage()
+
+n_3D = cupy.asnumpy(dn_3D).astype(float)
+otsu_val = skimage.filters.threshold_otsu(n_3D)
+n_3D_bi[n_3D >= otsu_val]= 1
+dn_3D_bi = cupy.asarray(n_3D_bi) 
+dn_3D[cupy.equal(dn_3D_bi , 0)] = 0
 
 
 
@@ -706,21 +717,21 @@ ax3=axes[2]
 # xy = (center_crop(np.real(n_3D[:,:,ffsize//2]),128,128))
 # xz = np.transpose(center_crop(np.real(n_3D[:,ffsize//2,:]),128,128))
 # yz = np.transpose(center_crop(np.real(n_3D[ffsize//2,:,:]),128,128))
-# xy = np.real(n_3D[:,:,ffsize//2])
-# xz = np.real(n_3D[:,ffsize//2,:])
-# yz = np.real(n_3D[ffsize//2,:,:])
-xy = np.real(np.sum(n_3D,axis = 2))
-xz = np.real(np.sum(n_3D,axis = 1))
-yz = np.real(np.sum(n_3D,axis = 0))
+fig.suptitle("tvmin+ positive constrain", fontsize=22)
+xy = np.real(n_3D[30:-30,30:-30,ffsize//2])
+xz = np.real(n_3D[30:-30,ffsize//2,30:-30])
+yz = np.real(n_3D[ffsize//2,30:-30,30:-30])
+# xy = np.real(np.sum(n_3D,axis = 2))
+# xz = np.real(np.sum(n_3D,axis = 1))
+# yz = np.real(np.sum(n_3D,axis = 0))
 Vmin = 1.35
 Vmax = np.max(np.real(n_3D))
-im1 = ax1.imshow(xy, cmap=plt.cm.jet)
-ax2.imshow(xz, cmap=plt.cm.jet)
-ax3.imshow(yz, cmap=plt.cm.jet)
+im1 = ax1.imshow(xy, cmap=plt.cm.jet,vmin = n_med)
+ax2.imshow(xz, cmap=plt.cm.jet,vmin = n_med)
+ax3.imshow(yz, cmap=plt.cm.jet,vmin = n_med)
 # im1 = ax1.imshow(xy, cmap=plt.cm.jet,vmin = Vmin,vmax = 1.42)
 # ax2.imshow(xz, cmap=plt.cm.jet,vmin = Vmin,vmax = 1.42)
 # ax3.imshow(yz, cmap=plt.cm.jet,vmin = Vmin,vmax = 1.42)
-
 cbar_ax = fig.add_axes([0.91, 0.23, 0.01, 0.55]) 
 cbar = fig.colorbar(im1, cax=cbar_ax, orientation='vertical').set_label(label='Refractive Index (a.u.)',size=14)
 plt.show() 

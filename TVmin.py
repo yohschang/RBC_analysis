@@ -13,16 +13,19 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from skimage import img_as_float
 import cupy
+from tqdm import tqdm
 
 
 class TvMin(object):
     
-    def __init__(self , to =0.15 , lamb = 0.015 , iter = 10 , verbose = False):
+    def __init__(self ,dF_3D_2 = cupy.array([]), to =0.15 , lamb = 0.1 , iteration = 100 , verbose = False):
         self.to = to
         self.lamb = lamb
-        self.iterationNumber = iter
+        self.iterationNumber = iteration
         self.verbose = verbose
         self.resultImage = np.array([])
+        self.dF_3D_2 = dF_3D_2
+        self.error = 0.002
     
     def getResultImage(self):
         return self.resultImage
@@ -37,7 +40,7 @@ class TvMin(object):
         
         p= cupy.array(self.gradient(0*self.inputImage))
 
-        for ind in range(0, self.iterationNumber):
+        for ind in tqdm(range(0, self.iterationNumber),desc = "tvmin"):
             if self.verbose:
                 print("Itertion: ",ind)
             if ind == 0:
@@ -50,9 +53,31 @@ class TvMin(object):
             r = self.getSquareSum(psi)
             p = (p + self.to*psi)/(1 + self.to*r)
             self.resultImage = (self.inputImage - self.divergence(p)*self.lamb)
-            # print(self.resultImage)
-            # print(self.norm2_3d(self.resultImage - p_prev))
+            self.resultImage = self.positive_constrain(self.resultImage,self.dF_3D_2)
+            
+            
+            ##critirian
+            # if self.norm2_3d(self.resultImage - p_prev) < self.error :
+            #     print(ind)
+            #     break
+    
+    def positive_constrain(self,dn_3D,dF_3D_2):
+        n_med = 1.334
+        wavelength = 532
+        k2 = (2*np.pi*n_med/wavelength)**2
+        n_med2 = n_med**2
+        # dF_3D = cupy.multiply(cupy.subtract(cupy.divide(cupy.multiply(dn_3D,dn_3D),n_med2),1),-k2)
+        # dF_3D = cupy.fft.fftn(dF_3D)
+        # dF_3D[cupy.not_equal(dF_3D_2,0)] = dF_3D_2[cupy.not_equal(dF_3D_2,0)]
+        # dF_3D   = cupy.fft.ifftn(dF_3D)    
+        # dn_3D   = cupy.multiply(cupy.sqrt(cupy.add(cupy.divide(dF_3D,-k2), 1)), n_med)
         
+        # dn_3D =  cupy.fft.fftshift(dn_3D);
+        dn_3D[cupy.less(cupy.real(dn_3D),n_med)] = n_med+1j*cupy.imag(dn_3D[cupy.less(cupy.real(dn_3D),n_med)])
+        dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(dn_3D), 0)])
+
+
+        return dn_3D
     
     def norm2_3d(self,x):
         return(cupy.sqrt(cupy.sum(x**2)))
