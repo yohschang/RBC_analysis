@@ -14,6 +14,7 @@ import matplotlib.image as mpimg
 from skimage import img_as_float
 import cupy
 from tqdm import tqdm
+from skimage import filters
 
 
 class TvMin(object):
@@ -26,6 +27,7 @@ class TvMin(object):
         self.resultImage = np.array([])
         self.dF_3D_2 = dF_3D_2
         self.error = 0.002
+        self.dn_3D_bi = cupy.array([])
     
     def getResultImage(self):
         return self.resultImage
@@ -38,9 +40,43 @@ class TvMin(object):
     
     def minimize(self):
         
+        # self.create_3d_mask()
+        
         p= cupy.array(self.gradient(0*self.inputImage))
-
+        self.iterationNumber += 10
         for ind in tqdm(range(0, self.iterationNumber),desc = "tvmin"):
+            if self.verbose:
+                print("Itertion: ",ind)
+            if ind < 10:
+                lamb = 0.5
+            else:
+                lamb = self.lamb
+                
+            midP = self.divergence(p) - self.inputImage/lamb
+            psi=cupy.array(self.gradient(midP))
+            r = self.getSquareSum(psi)
+            p = (p + self.to*psi)/(1 + self.to*r)
+            self.resultImage = (self.inputImage - self.divergence(p)*lamb)
+            self.resultImage = self.positive_constrain(self.resultImage,self.dF_3D_2)
+            if ind == 9 :
+                n_3D = cupy.asnumpy(self.resultImage).astype(float)
+                otsu_val = filters.threshold_otsu(n_3D)
+                n_3D_bi = np.zeros_like(n_3D)
+                n_3D_bi[n_3D >= otsu_val]= 1
+                self.dn_3D_bi = cupy.asarray(n_3D_bi) 
+            elif ind > 9:
+                self.resultImage[cupy.equal(self.dn_3D_bi , 0)] = 0
+            
+            ##critirian
+            # if self.norm2_3d(self.resultImage - p_prev) < self.error :
+            #     print(ind)
+            #     break
+    
+    def create_3d_mask(self):
+                
+        p= cupy.array(self.gradient(0*self.inputImage))
+        lamb = 0.5
+        for ind in range(0, 10):
             if self.verbose:
                 print("Itertion: ",ind)
             if ind == 0:
@@ -54,12 +90,10 @@ class TvMin(object):
             p = (p + self.to*psi)/(1 + self.to*r)
             self.resultImage = (self.inputImage - self.divergence(p)*self.lamb)
             self.resultImage = self.positive_constrain(self.resultImage,self.dF_3D_2)
-            
-            
-            ##critirian
-            # if self.norm2_3d(self.resultImage - p_prev) < self.error :
-            #     print(ind)
-            #     break
+
+
+
+                
     
     def positive_constrain(self,dn_3D,dF_3D_2):
         n_med = 1.334

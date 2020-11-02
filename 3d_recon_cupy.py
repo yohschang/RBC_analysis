@@ -17,7 +17,7 @@ from scipy import ndimage
 import cupy
 import cupyx.scipy.ndimage
 # from cupyx.scipy import ndimage
-import skimage
+from skimage import filters
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -685,17 +685,10 @@ dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(d
 
 
 ##TVMIN + positiveconstrain + crop
-tv = TvMin(dF_3D_2 = dF_3D_2 , lamb = 0.006, iteration = 100)
+tv = TvMin(dF_3D_2 = dF_3D_2 , lamb = 0.008, iteration = 100)
 tv.setInputImage(dn_3D)
 tv.minimize()
 dn_3D = tv.getResultImage()
-
-n_3D = cupy.asnumpy(dn_3D).astype(float)
-otsu_val = skimage.filters.threshold_otsu(n_3D)
-n_3D_bi[n_3D >= otsu_val]= 1
-dn_3D_bi = cupy.asarray(n_3D_bi) 
-dn_3D[cupy.equal(dn_3D_bi , 0)] = 0
-
 
 
 n_3D = cupy.asnumpy(cupy.transpose(dn_3D,(0,2,1)))
