@@ -21,18 +21,68 @@ from skimage import filters
 
 import warnings
 warnings.filterwarnings('ignore')
+import time
+import os
+
+from dataclasses import dataclass
 
 
-# folder path of optical fields
-opt_field = r"D:\lab\CODE\rbc_img_analyze\simulate_rbc\test"
+@dataclass
+class params:
+    n_med : float= 1.334
+    wavelength = 532
+    CameraPixelSize = 5.5
+    mag = 83.33
+    ffsize = 256
+    FOV = 256
+    n_med2 = n_med*n_med
+    wavelength = wavelength * 1e-9
 
-# phimap_stack = np.load(r"D:\lab\CODE\rbc_img_analyze\simulate_rbc\phimap_stack.npy",allow_pickle=True)
-# theta = np.load(r"D:\lab\CODE\rbc_img_analyze\simulate_rbc\deg.npy",allow_pickle=True)
-# nx,ny,frame = phimap_stack.shape
-# print(phimap_stack.shape)
+    f0 = 1/wavelength
+    fm0  = f0*n_med
+    fm02 = fm0*fm0
+    dx = CameraPixelSize * 1e-6 / mag * FOV / ffsize
+    # Wave vector
+    k = 2*np.pi*n_med/wavelength
+    k2 = k*k
+    # 每一個grid的frequency resolution
+    df = 1/(ffsize*dx)
+    
 
-phimap_stack = np.load(r"D:\data\2020-10-17\rbc2\phi\rbc1\recon_phimap.npy", allow_pickle=True)
-theta = np.load(r"D:\data\2020-10-17\rbc2\phi\rbc1\recon_deg.npy", allow_pickle=True)
+t1 = time.time()
+
+
+path = r"C:\Users\YX\Desktop\temp\8\phi\18\rbc"
+
+if os.path.exists(path + "\\n_3d.npy"):
+    os.remove(path + "\\n_3d.npy")
+    os.remove(path + "\\n_3d.mat")
+
+print(path)
+mode = 0# 0: normal ,1 :lite
+
+c46 = np.load(path + r"\c46.npy")
+plt.plot(c46,"o-")
+plt.show()
+
+rng = input("recon range : ")
+if rng != "":
+    s ,e = rng.split(",")
+else:
+    s = 0; e = -1
+# s = 0; e = -1
+
+savepath = path + r"\n_3D.npy"
+if mode == 0:
+    phimap_stack = np.load(path + r"\recon_phimap.npy", allow_pickle=True)[int(s):int(e)]
+    theta = np.load(path + r"\recon_deg.npy", allow_pickle=True)[int(s):int(e)]
+else:
+    phimap_stack = np.load(path + r"\recon_phimap_lite.npy", allow_pickle=True)
+    theta = np.load(path + r"\recon_deg_lite.npy", allow_pickle=True)
+
+
+phimap_stack = phimap_stack.real
+
 # nx,ny,frame = phimap_stack.shape
 frame,nx,ny = phimap_stack.shape
 # print(phimap_stack.shape)
@@ -40,9 +90,9 @@ frame,nx,ny = phimap_stack.shape
 n_med = 1.334
 wavelength = 532
 CameraPixelSize = 5.5
-mag = 50
-ffsize = 128
-FOV = 128
+mag = 83.33
+ffsize = 256
+FOV = 256
 n_med2 = n_med*n_med
 wavelength = wavelength * 1e-9
 
@@ -117,8 +167,11 @@ def plot_F_domain(f, ffsize, df):
     
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 6),sharex=True, sharey=False)
     ax1=axes[0]
+    # ax1.axis("off")
     ax2=axes[1]
+    # ax2.axis("off")
     ax3=axes[2]
+    # ax3.axis("off")
     xy = np.log10(np.abs(f[:,:,ffsize//2]))
     xz = np.log10(np.abs(f[:,ffsize//2,:]))
     yz = np.log10(np.abs(f[ffsize//2,:,:]))
@@ -135,154 +188,6 @@ def plot_F_domain(f, ffsize, df):
     ax3.set_xlabel('y', fontsize=16), ax3.set_ylabel('z', fontsize=16)
 #     ax3.xaxis.set_xticks(yticks), ax3.xaxis.set_yticks(zticks)
     plt.show() 
-    
-def tvandpocs(F_3D):
-    # Steadily Decreasing Parameter (SDP參數) 
-    beta     = 1.000
-    beta_red = 0.995
-    ng       = 1   #TV-steepest descent loop 次數
-    alpha    = 0.2  
-    rmax     = 0.95
-    alpha_red    = 0.95
-    ddeps = 0
-    
-    print("first pocs start")
-    F_3D_2 = F_3D
-    # % (2) 將 F_3D 作 inverse Fourier transform 得到 f_3D
-    f_3D   = np.fft.ifftn(F_3D)
-    # % (3) 轉換成折射率分布
-    n_3D   = np.sqrt(-f_3D/k2 + 1) * n_med
-    # % (4) Enforcement (暴力法)
-    n_3D_2                   = np.real(n_3D)
-    n_3D_2[n_3D_2<n_med]     = n_med
-    f_3D   = - k2*(n_3D**2/n_med**2-1)
-    f_3D_2 = - k2*(n_3D_2**2 /n_med**2-1)
-    # % (5-2) 計算data consistency step distance (Dp)
-    Dp = np.sqrt(np.sum(abs(f_3D_2-f_3D)*abs(f_3D_2-f_3D)))
-    # print(Dp)
-    
-    # % (6) 計算Dd
-    F_3D   = np.fft.fftn(f_3D_2)
-    Dd     = np.sqrt(np.sum(abs(F_3D_2-F_3D)*abs(F_3D_2-F_3D)))
-    
-    # % ===================================================================
-    # % PART 2 :Gradient descent step (TV)
-    # % ===================================================================
-    print("first tv start")
-    f_3D  = f_3D_2
-    n_3D_2 = np.zeros((ffsize,ffsize,ffsize))  #n_3D_2用來儲存grad(TV) 
-    eps = 1e-8
-    # % (1) TV-steepest descent loop
-    for TSDloop in tqdm(range(ng)):
-            # % (a) 計算 n_3D_2 的 grad(TV)
-        for ss in range(1,ffsize-1):
-            for tt in range(1,ffsize-1):
-                for kk in range(1,ffsize-1):
-                    term1_deno = np.sqrt( (f_3D_2[ss  ,tt  ,kk  ] -f_3D_2[ss  ,tt-1, kk  ])**2 + (f_3D_2[ss  ,tt  ,kk  ] - f_3D_2[ss-1,tt  ,kk  ])**2 + (f_3D_2[ss  ,tt  ,kk  ] - f_3D_2[ss  ,tt  ,kk-1])**2 + eps)
-                    term2_deno = np.sqrt( (f_3D_2[ss  ,tt+1,kk  ] -f_3D_2[ss  ,tt  , kk  ])**2 + (f_3D_2[ss  ,tt+1,kk  ] - f_3D_2[ss-1,tt+1,kk  ])**2 + (f_3D_2[ss  ,tt+1,kk  ] - f_3D_2[ss  ,tt+1,kk-1])**2 + eps)
-                    term3_deno = np.sqrt( (f_3D_2[ss+1,tt  ,kk  ] -f_3D_2[ss+1,tt-1, kk  ])**2 + (f_3D_2[ss+1,tt  ,kk  ] - f_3D_2[ss  ,tt  ,kk  ])**2 + (f_3D_2[ss+1,tt  ,kk  ] - f_3D_2[ss+1,tt+1,kk-1])**2 + eps)
-                    term4_deno = np.sqrt( (f_3D_2[ss  ,tt  ,kk+1] -f_3D_2[ss  ,tt-1, kk+1])**2 + (f_3D_2[ss  ,tt  ,kk+1] - f_3D_2[ss-1,tt  ,kk+1])**2 + (f_3D_2[ss  ,tt  ,kk+1] - f_3D_2[ss  ,tt  ,kk  ])**2 + eps)
-
-                    term1_num =  3* f_3D_2[ss  ,tt   ,kk  ]  - f_3D_2[ss  ,tt-1 ,kk  ] - f_3D_2[ss-1,tt ,kk ] - f_3D_2[ss ,tt ,kk-1]
-                    term2_num =     f_3D_2[ss  ,tt+1 ,kk  ]  - f_3D_2[ss  ,tt  ,kk  ]
-                    term3_num =     f_3D_2[ss+1,tt   ,kk  ]  - f_3D_2[ss  ,tt  ,kk  ]
-                    term4_num =     f_3D_2[ss  ,tt   ,kk+1]  - f_3D_2[ss  ,tt  ,kk  ]
-
-                    # % 將n_3D_2用來儲存grad(TV) (*******INPORTANTANT*******)
-                    n_3D_2[ss,tt,kk] = term1_num/term1_deno - term2_num/term2_deno - term3_num/term3_deno - term4_num/term4_deno
-
-            # % (b) 計算normalized grad(TV)
-        n_3D_2 = n_3D_2/np.abs(n_3D_2)
-    
-            # % (c) 
-            # %     dtvg = alpha * dp (for 1st計算) , dtvg下降的斜率 
-        dtvg   = alpha * Dp
-        f_3D_2 = f_3D_2 - dtvg * n_3D_2 
-
-    
-    
-    # % (2) 計算 Gradient descent step distance (Dg) :   f_3D_2(New), f_3D(Old) 
-    Dg = np.sqrt(np.sum(abs(f_3D_2-f_3D)*abs(f_3D_2-f_3D)))
-    
-    print("second tv start")
-    # % ===================================================================
-    # %  PART 3. 決定迭代參數
-    # %  計算dtvg給第2次iteration
-    # % ===================================================================
-    if Dg > rmax*Dp and Dd>ddeps:
-        dtvg = dtvg * alpha_red  
-    
-    for ITERloop in range(2):
-        print("ITERLOOP: " + str(ITERloop) )
-        F_3D = np.fft.fftn(f_3D)
-        F_3D[F_3D_2!=0] = beta*F_3D_2[F_3D_2!=0] + (1-beta)*F_3D[F_3D_2!=0]
-
-        beta = beta*beta_red
-
-        # % (2) 將 F_3D 作 inverse Fourier transform 得到 f_3D
-        f_3D   = np.fft.ifftn(F_3D)
-
-        # % (3) 轉換成折射率分布
-        n_3D   = np.sqrt(-f_3D/k2 + 1) * n_med
-
-        # % (4) Enforcement
-        n_3D_2[np.real(n_3D)<n_med] = n_med       
-        n_3D_2                   = np.real(n_3D)
-
-        # % (5-1) 計算data consistency step distance (Dp)
-        f_3D   = - k2*(n_3D**2  /n_med**2-1)
-        f_3D_2 = - k2*(n_3D_2**2/n_med**2-1)
-
-        # % (5-2) 計算data consistency step distance (Dp)
-        Dp = np.sqrt(np.sum(np.abs(f_3D_2-f_3D)*np.abs(f_3D_2-f_3D)))
-
-        # % (6) 計算Dd
-        F_3D   = np.fft.fftn(f_3D_2)
-        Dd     = np.sqrt(np.sum(np.abs(F_3D_2-F_3D)*np.abs(F_3D_2-F_3D)))
-        
-        f_3D  = f_3D_2
-        ng = 3
-        # % (1) TV-steepest descent loop
-        for TSDloop in range(ng):
-                # % (a) 計算 n_3D_2 的 grad(TV)
-            for ss in range(1,ffsize-1):
-                for tt in range(1,ffsize-1):
-                    for kk in range(1,ffsize-1):
-                        term1_deno = np.sqrt( (f_3D_2[ss  ,tt  ,kk  ] -f_3D_2[ss  ,tt-1, kk  ])**2 + (f_3D_2[ss  ,tt  ,kk  ] - f_3D_2[ss-1,tt  ,kk  ])**2 + (f_3D_2[ss  ,tt  ,kk  ] - f_3D_2[ss  ,tt  ,kk-1])**2 + eps)
-                        term2_deno = np.sqrt( (f_3D_2[ss  ,tt+1,kk  ] -f_3D_2[ss  ,tt  , kk  ])**2 + (f_3D_2[ss  ,tt+1,kk  ] - f_3D_2[ss-1,tt+1,kk  ])**2 + (f_3D_2[ss  ,tt+1,kk  ] - f_3D_2[ss  ,tt+1,kk-1])**2 + eps)
-                        term3_deno = np.sqrt( (f_3D_2[ss+1,tt  ,kk  ] -f_3D_2[ss+1,tt-1, kk  ])**2 + (f_3D_2[ss+1,tt  ,kk  ] - f_3D_2[ss  ,tt  ,kk  ])**2 + (f_3D_2[ss+1,tt  ,kk  ] - f_3D_2[ss+1,tt+1,kk-1])**2 + eps)
-                        term4_deno = np.sqrt( (f_3D_2[ss  ,tt  ,kk+1] -f_3D_2[ss  ,tt-1, kk+1])**2 + (f_3D_2[ss  ,tt  ,kk+1] - f_3D_2[ss-1,tt  ,kk+1])**2 + (f_3D_2[ss  ,tt  ,kk+1] - f_3D_2[ss  ,tt  ,kk  ])**2 + eps)
-    
-                        term1_num =  3* f_3D_2[ss  ,tt   ,kk  ]  - f_3D_2[ss  ,tt-1 ,kk  ] - f_3D_2[ss-1,tt ,kk ] - f_3D_2[ss ,tt ,kk-1]
-                        term2_num =     f_3D_2[ss  ,tt+1 ,kk  ]  - f_3D_2[ss  ,tt  ,kk  ]
-                        term3_num =     f_3D_2[ss+1,tt   ,kk  ]  - f_3D_2[ss  ,tt  ,kk  ]
-                        term4_num =     f_3D_2[ss  ,tt   ,kk+1]  - f_3D_2[ss  ,tt  ,kk  ]
-    
-                        # % 將n_3D_2用來儲存grad(TV) (*******INPORTANTANT*******)
-                        n_3D_2[ss,tt,kk] = term1_num/term1_deno - term2_num/term2_deno - term3_num/term3_deno - term4_num/term4_deno;
-          
-            # % (b) 計算normalized grad(TV)
-            n_3D_2 = n_3D_2/np.abs(n_3D_2)
-            f_3D_2 = f_3D_2 - dtvg * n_3D_2 
-   
-        
-        
-        # % (2) 計算 Gradient descent step distance (Dg) :   f_3D_2(New), f_3D(Old) 
-        Dg = np.sqrt(np.sum(abs(f_3D_2-f_3D)*abs(f_3D_2-f_3D)))
-        if Dg > rmax*Dp and Dd>ddeps:
-            dtvg = dtvg * alpha_red
-    
-    print("second tv finish")
-            
-    f_3D = -k2*(n_3D**2/n_med**2-1)
-    F_3D = np.fft.fftn(f_3D)
-    F_3D[F_3D_2!=0] = beta*F_3D_2[F_3D_2!=0] + (1-beta)*F_3D[F_3D_2!=0]
-    f_3D   = np.fft.ifftn(F_3D)
-    n_3D   = np.sqrt(-f_3D/k2 + 1) *n_med
-
-    n_3D = np.fft.fftshift(n_3D)
-    
-    return n_3D
     
 MedianFilter_gpu = cupy.RawKernel(r'''
     #define MEDIAN_DIMENSION  3 // For matrix of 3 x 3. We can Use 5 x 5 , 7 x 7 , 9 x 9......   
@@ -464,6 +369,7 @@ EwaldSphere_kernel2 = cupy.RawKernel(r'''
                     Nz = cuRound(Fz/df);
                     
                     Nx2 = Nx*cos(angX)-Nz*sin(angX);
+
                     Nz2 = Nx*sin(angX)+Nz*cos(angX);
                     
                     if ( Nx2 >= -sizeX / 2 && Nx2<sizeX / 2 && Nz2 >= -sizeY / 2 && Nz2<sizeY / 2) 
@@ -640,12 +546,15 @@ dF = None
 # n_3D = tvandpocs(F_3Dx /dx)
 
 
-#%% ORIGIN constrain and reconstuct
+# %% ORIGIN constrain and reconstuct
  
 # disp_3Dx = np.fft.fftshift(C_3D)
 # print(np.sum(np.isnan(F_3Dx)))
+
+#####################plot f
 plot_F_domain(np.fft.fftshift(F_3Dx), ffsize, df)
-plot_F_domain(np.fft.fftshift(C_3D/C_3D), ffsize, df)
+# plot_F_domain(np.fft.fftshift(C_3D/C_3D), ffsize, df)
+#####################plot f
 
 # dF_3Dx = cupy.fft.fftshift(dF_dst)
 dF_3Dx = cupy.array(F_3Dx.copy())
@@ -685,7 +594,7 @@ dn_3D[cupy.less(cupy.imag(dn_3D),0)]     = cupy.real(dn_3D[cupy.less(cupy.imag(d
 
 
 ##TVMIN + positiveconstrain + crop
-tv = TvMin(dF_3D_2 = dF_3D_2 , lamb = 0.008, iteration = 100)
+tv = TvMin(dF_3D_2 = dF_3D_2 , lamb = 0.008, iteration = 40)
 tv.setInputImage(dn_3D)
 tv.minimize()
 dn_3D = tv.getResultImage()
@@ -710,14 +619,15 @@ ax3=axes[2]
 # xy = (center_crop(np.real(n_3D[:,:,ffsize//2]),128,128))
 # xz = np.transpose(center_crop(np.real(n_3D[:,ffsize//2,:]),128,128))
 # yz = np.transpose(center_crop(np.real(n_3D[ffsize//2,:,:]),128,128))
-fig.suptitle("tvmin+ positive constrain", fontsize=22)
-xy = np.real(n_3D[30:-30,30:-30,ffsize//2])
-xz = np.real(n_3D[30:-30,ffsize//2,30:-30])
-yz = np.real(n_3D[ffsize//2,30:-30,30:-30])
+# fig.suptitle("0.05% Glutaraldehyde ", fontsize=22)
+wid = 60
+xy = np.real(n_3D[wid:-wid,wid:-wid,ffsize//2])
+xz = np.real(n_3D[wid:-wid,ffsize//2,wid:-wid])
+yz = np.real(n_3D[ffsize//2,wid:-wid,wid:-wid])
 # xy = np.real(np.sum(n_3D,axis = 2))
 # xz = np.real(np.sum(n_3D,axis = 1))
 # yz = np.real(np.sum(n_3D,axis = 0))
-Vmin = 1.35
+Vmin = 1.33
 Vmax = np.max(np.real(n_3D))
 im1 = ax1.imshow(xy, cmap=plt.cm.jet,vmin = n_med)
 ax2.imshow(xz, cmap=plt.cm.jet,vmin = n_med)
@@ -729,6 +639,23 @@ cbar_ax = fig.add_axes([0.91, 0.23, 0.01, 0.55])
 cbar = fig.colorbar(im1, cax=cbar_ax, orientation='vertical').set_label(label='Refractive Index (a.u.)',size=14)
 plt.show() 
 
-# np.save(r"D:\data\2020-10-17\rbc2\phi\rbc1\n_3d.npy",n_3D)
+# np.save(savepath,np.real(n_3D))
 
+# t2 = time.time()
+# print(t2-t1)
+# print("mode : " + str(mode))
 
+save  = input("save [y/n] : ")
+if save != "n":
+    import scipy.io
+    # if mode == 1:
+    scipy.io.savemat(path+'\\n_3d.mat', {'n_3d' : np.real(n_3D)})
+    np.save(path+'\\n_3d.npy' , np.real(n_3D))
+else :
+    pass
+# import scipy.io
+# scipy.io.savemat(path+'\\n_3d.mat', {'n_3d' : np.real(n_3D)})
+# np.save(path+'\\n_3d.npy' , np.real(n_3D))
+# else:
+#     scipy.io.savemat(path+'\\n_3d_lite.mat', {'n_3d' : np.real(n_3D)})
+#     np.save(path+'\\n_3d_lite.npy' , np.real(n_3D))
